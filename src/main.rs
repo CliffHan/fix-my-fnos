@@ -6,8 +6,10 @@ mod config;
 mod service;
 mod utils;
 
+const VERSION: &str = env!("VERSION");
+
 #[derive(Parser, Debug)]
-#[command(name = "fix-my-fnos")]
+#[command(name = "fix-my-fnos", version = VERSION)]
 #[command(about = "监控并修复 FNOS 运行期相关问题")]
 #[command(
     long_about = "监控并修复 FNOS 运行期相关问题，目前支持：\n1. 系统启动后恢复指定 docker compose 服务；\n2. 监控指定物理网卡启动消息，尝试修复 macvlan (docker & proxy) 状态；"
@@ -41,7 +43,7 @@ enum Cli {
 #[derive(Parser, Debug)]
 struct Args {
     /// 配置文件
-    #[arg(short, long, default_value = "/etc/fix-my-fnos/config.toml")]
+    #[arg(short, long, default_value = config::DEFAULT_CONFIG_FILE)]
     config_file: String,
 }
 
@@ -88,9 +90,9 @@ async fn main() -> Result<()> {
     match cli {
         Cli::Install(args) => {
             let _ = load_config(&args.config_file)?;
-            service::install(&args.config_file)?;
+            service::install(&args.config_file).await?;
         }
-        Cli::Uninstall => service::uninstall()?,
+        Cli::Uninstall => service::uninstall().await?,
         Cli::Run(args) => service::run(load_config(&args.config_file)?).await?,
         Cli::TestConfig(args) => tracing::info!("config={:#?}", load_config(&args.config_file)?),
         Cli::TestCompose(args) => service::test_compose(load_config(&args.config_file)?).await?,

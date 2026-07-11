@@ -28,8 +28,6 @@ pub async fn run(config: Config) -> Result<()> {
     tokio::spawn(async move {
         monitor(interface, repair_tx, messages).await;
     });
-    // TODO: 1st try_send after boot?
-
     loop {
         tokio::select! {
             _ = tokio::signal::ctrl_c() => {
@@ -46,20 +44,72 @@ pub async fn run(config: Config) -> Result<()> {
                     Err(e) => tracing::error!("Failed to repair macvlan: {:#}", e),
                 }
             }
-
         }
     }
     Ok(())
 }
 
-pub fn install(config_file: &str) -> Result<()> {
+const SERVICE_NAME: &str = "fix-my-fnos";
+const INSTALL_DIR: &str = "/usr/local/bin";
+const SERVICE_FILE_PATH: &str = "/etc/systemd/system/fix-my-fnos.service";
+const UNIT_TEMPLATE: &str = include_str!("../fix-my-fnos.service");
+
+pub async fn install(config_file: &str) -> Result<()> {
     tracing::debug!("service::install(), config_file={}", config_file);
-    todo!();
+
+    let src_exe = std::env::current_exe()?;
+    let dst_exe = std::path::Path::new(INSTALL_DIR).join(SERVICE_NAME);
+    std::fs::copy(&src_exe, &dst_exe)?;
+    tracing::info!("Copied executable to {}", dst_exe.display());
+
+    if config_file != DEFAULT_CONFIG_FILE {
+        std::fs::create_dir_all(CONFIG_DIR)?;
+        let target = std::path::Path::new(DEFAULT_CONFIG_FILE);
+        if target.exists() {
+            let ts = format_current_timestamp();
+            let backup = format!("{}.{}.bak", DEFAULT_CONFIG_FILE, ts);
+            std::fs::copy(target, &backup)?;
+            tracing::info!("Backed up existing config to {}", backup);
+        }
+        std::fs::copy(config_file, target)?;
+        tracing::info!("Copied config to {}", DEFAULT_CONFIG_FILE);
+    }
+
+    let exe_path = dst_exe.to_str().ok_or_else(|| anyhow!("executable path is not valid UTF-8"))?;
+    let unit = UNIT_TEMPLATE.replace("{exe_path}", exe_path).replace("{config_path}", DEFAULT_CONFIG_FILE);
+    std::fs::write(SERVICE_FILE_PATH, unit)?;
+
+    run_systemctl(&["daemon-reload"]).await?;
+    run_systemctl(&["enable", SERVICE_NAME]).await?;
+
+    tracing::info!("Service installed and enabled. Start with: systemctl start {}", SERVICE_NAME);
+    Ok(())
 }
 
-pub fn uninstall() -> Result<()> {
+pub async fn uninstall() -> Result<()> {
     tracing::debug!("service::uninstall()");
-    todo!();
+    if let Err(e) = run_systemctl(&["stop", SERVICE_NAME]).await {
+        tracing::warn!("systemctl stop failed (may not be running): {}", e);
+    }
+    if let Err(e) = run_systemctl(&["disable", SERVICE_NAME]).await {
+        tracing::warn!("systemctl disable failed (may not be enabled): {}", e);
+    }
+
+    match std::fs::remove_file(SERVICE_FILE_PATH) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Err(anyhow!("service is not installed")),
+        Err(e) => return Err(e.into()),
+    }
+
+    let exe_path = std::path::Path::new(INSTALL_DIR).join(SERVICE_NAME);
+    if exe_path.exists() {
+        std::fs::remove_file(&exe_path)?;
+        tracing::info!("Removed executable {}", exe_path.display());
+    }
+
+    run_systemctl(&["daemon-reload"]).await?;
+    tracing::info!("Service uninstalled");
+    Ok(())
 }
 
 pub async fn test_compose(config: Config) -> Result<()> {
@@ -120,6 +170,9 @@ async fn run_docker_compose(compose_config: &DockerComposeConfig) {
 
 async fn monitor(interface: String, repair_tx: Sender<MonitorMessage>, mut messages: NetlinkMessages) {
     tracing::debug!("service::monitor(), interface={}", interface);
+    // start repair after boot run
+    let _ = repair_tx.try_send(());
+    // loop monitor messages
     while let Some((message, _)) = messages.next().await {
         // tracing::debug!("service::monitor(), received message: {:?}", message);
         let payload = match message.payload {

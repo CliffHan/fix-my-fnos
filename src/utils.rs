@@ -76,6 +76,20 @@ pub async fn bring_up_proxy(handle: &Handle, index: u32, ip: IpAddr, prefix: u8)
     Ok(())
 }
 
+pub fn format_current_timestamp() -> String {
+    let dt = time::OffsetDateTime::now_utc();
+    let format = time::macros::format_description!("[year][month][day][hour][minute][second]");
+    dt.format(format).unwrap_or_default()
+}
+
+pub async fn run_systemctl(args: &[&str]) -> Result<()> {
+    let status = tokio::process::Command::new("systemctl").args(args).status().await?;
+    if !status.success() {
+        return Err(anyhow!("systemctl {} failed", args.join(" ")));
+    }
+    Ok(())
+}
+
 pub async fn reset_container_route(handle: &Handle, proxy_index: u32, container_ip: IpAddr) -> Result<()> {
     let (del_message, add_message) = match container_ip {
         IpAddr::V4(ip) => (

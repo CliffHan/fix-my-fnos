@@ -1,0 +1,13 @@
+[Unit]
+Description=Monitor and fix FNOS runtime issues
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+ExecStart={exe_path} run -c {config_path}
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

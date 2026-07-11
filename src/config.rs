@@ -1,8 +1,10 @@
-use std::net::IpAddr;
-
 use ipnet::IpNet;
 use serde::Deserialize;
 use serde_inline_default::serde_inline_default;
+use std::net::IpAddr;
+
+pub const CONFIG_DIR: &str = "/etc/fix-my-fnos";
+pub const DEFAULT_CONFIG_FILE: &str = "/etc/fix-my-fnos/config.toml";
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
