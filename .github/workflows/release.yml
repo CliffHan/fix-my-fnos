@@ -31,7 +31,7 @@ jobs:
           targets: x86_64-unknown-linux-musl
 
       - name: Build release binary
-        run: cargo build --release --target x86_64-unknown-linux-musl
+        run: cargo build --release --target x86_64-unknown-linux-musl -p fnos-service
 
       - name: Create Release
         uses: softprops/action-gh-release@v3

@@ -54,7 +54,7 @@ fn init_env_tracing() {
 }
 
 fn init_debug_tracing() {
-    let filter = EnvFilter::new("info,fix_my_fnos=debug");
+    let filter = EnvFilter::new("info,fnos_service=debug");
     tracing_subscriber::fmt().with_env_filter(filter).init();
 }
 
